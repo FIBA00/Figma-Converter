@@ -2,7 +2,6 @@
 - Figma design to tkinter app converter version 1.0
 - The premium version will come in the next release.
 """
-
 import os
 import sys
 import platform
@@ -16,20 +15,8 @@ from threading import Thread
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urljoin
+from typing import Dict, List
 
-
-def get_project_root() -> Path:
-    """Get the absolute path to the project root directory."""
-    if getattr(sys, "frozen", False):
-        # We are running in a PyInstaller bundle
-        return Path(sys._MEIPASS)
-    else:
-        # We are running in normal Python environment
-        return Path(__file__).parent
-
-
-# Ensure imports work in both development and deployed environments
-sys.path.append(str(get_project_root()))
 from figma import (
     create_path,
     convert_url_to_file_format,
@@ -39,13 +26,17 @@ from figma import (
     DATA_DIR,
     CONFIG_PATH,
 )
+def get_project_root() -> Path:
+    """Get the absolute path to the project root directory."""
+    if getattr(sys, "frozen", False):
+        # We are running in a PyInstaller bundle
+        return Path(sys._MEIPASS)
+    else:
+        # We are running in normal Python environment
+        return Path(__file__).parent
 
-from typing import Dict, List
-
-# Define paths for easier maintenance
-PATHS = {"logs": DATA_DIR / "logs" / "app.log"}
-
-# Ensure logs directory exists
+sys.path.append(str(get_project_root()))
+PATHS: Dict[str, Path] = {"logs": DATA_DIR / "logs" / "app.log"}
 PATHS["logs"].parent.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -60,7 +51,6 @@ logging.basicConfig(
 )
 
 
-# our app class
 class FigmaConverterApp(ctk.CTk):
     GITHUB_REPO = "fraold/figma-converter"  # Default repository
     CURRENT_VERSION = "1.0.0"
@@ -413,12 +403,13 @@ class FigmaConverterApp(ctk.CTk):
         # Configure the progress bar
         self.progress_bar.configure(
             mode="indeterminate",  # For continuous animation
-            progress_color=("green", "dark green"),  # Light mode, Dark mode colors
+            progress_color=("red", "red"),  # Light mode, Dark mode colors
             height=10,
             corner_radius=10,
             border_width=2,
             border_color=("gray70", "gray30"),
         )
+        self.hide_progress()
 
         # # Optional: Add space for future buttons in bottom bar
         # self.bottom_left_frame = ctk.CTkFrame(self.bottom_bar, fg_color="transparent")
@@ -504,25 +495,25 @@ class FigmaConverterApp(ctk.CTk):
     def show_help(self):
         """Show help information"""
         help_text = """
-			Figma Converter Help:
+            Figma Converter Help:
 
-			1. Token & URL:
-			- Paste your Figma access token
-			- Enter the Figma file URL
+            1. Token & URL:
+            - Paste your Figma access token
+            - Enter the Figma file URL
 
-			2. Keyboard Shortcuts:
-			- Ctrl+S: Save settings
-			- Ctrl+R: Run conversion
-			- Ctrl+T: Toggle theme
+            2. Keyboard Shortcuts:
+            - Ctrl+S: Save settings
+            - Ctrl+R: Run conversion
+            - Ctrl+T: Toggle theme
 
-			3. Features:
-			- Auto-save settings
-			- Recent conversions list
-			- Theme switching
-			- Settings export
+            3. Features:
+            - Auto-save settings
+            - Recent conversions list
+            - Theme switching
+            - Settings export
 
-			Need more help? Visit our documentation.
-		"""
+            Need more help? Visit our documentation.
+        """
         dialog = self.show_alert("Help & Information", help_text, "info")
 
     def apply_button_style(self, button, style="primary"):
@@ -625,7 +616,7 @@ class FigmaConverterApp(ctk.CTk):
         content = self.recent_list.get("1.0", "end")
         if content.count("\n") > 5:
             last_newline = content.find("\n", content.find("\n") + 1)
-            self.recent_list.delete(f"6.0", "end")
+            self.recent_list.delete("6.0", "end")
         self.recent_list.configure(state="disabled")
 
     def show_tooltip(self, text):
@@ -894,8 +885,6 @@ class FigmaConverterApp(ctk.CTk):
             self.out(f"Settings export failed: {str(e)}")
 
     # -------------------------------------CORE METHODS----------------------------------------
-    # create the import methods into the gui
-
     def convert_design(self):
         """- Handle the design conversion process."""
         # Clear previous output
@@ -924,13 +913,13 @@ class FigmaConverterApp(ctk.CTk):
                 conversion_thread = Thread(
                     target=self.run_conversion, args=(token, file_url, output_path)
                 )
-                conversion_thread.deamon = True
+                conversion_thread.daemon = True
                 conversion_thread.start()
                 self.update_status("Done", ("green", "dark orange"))
 
             else:
                 self.out("Empty url, can't convert empty url")
-                self.out(f"Please check yor url!")
+                self.out("Please check yor url!")
                 self.show_alert("Convert Error", f"Try to check your Figma url!")
 
                 self.hide_progress()
@@ -955,13 +944,23 @@ class FigmaConverterApp(ctk.CTk):
         finally:
             self.after(0, self.hide_progress)
 
+    def run_check_update(self) -> None:
+        """ Run the check for update system on separate thread to prevent blocking"""
+        try:
+            update_thread = Thread(target=self.check_for_updates)
+            update_thread.daemon = True
+            update_thread.start()
+        except Exception as e:
+            self.out(f"There was error running the check update {str(e)}")
+        
+
     def check_for_updates(self):
         """Check for new releases on GitHub"""
         try:
             self.out("Checking for update... ")
-            # First try to get repository info
+            self.show_progress()
             repo_url = f"{self.GITHUB_API_URL}{self.GITHUB_REPO}"
-            repo_response = requests.get(repo_url, timeout=5)
+            repo_response: requests.Response   = requests.get(repo_url, timeout=5)
 
             if repo_response.status_code == 404:
                 self.out("Repository not found, skipping update check")
@@ -990,6 +989,8 @@ class FigmaConverterApp(ctk.CTk):
             self.out(f"Network error checking for updates: {e}")
         except Exception as e:
             self.out(f"Failed to check for updates: {e}")
+        finally:
+            self.hide_progress()
 
     def download_and_install_update(self, download_url):
         """Download and install the update"""
@@ -1125,7 +1126,7 @@ if __name__ == "__main__":
     try:
         app = FigmaConverterApp()
         app.after(500, app.load_settings)
-        app.after(2000, app.check_for_updates)
+        app.after(2000, app.run_check_update)
         app.mainloop()
     except KeyboardInterrupt:
         print("/ Programm killed by user")
