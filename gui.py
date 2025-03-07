@@ -1007,6 +1007,10 @@ class FigmaConverterApp(ctk.CTk):
                 self.out(f"Failed to check releases: {response.status_code}")
         except requests.RequestException as e:
             self.out(f"Network error checking for updates: {e}")
+        except requests.Timeout:
+            self.out("Timeout checking for updates")
+        except ConnectionError:
+            self.out("Connection error checking for updates")
         except Exception as e:
             self.out(f"Failed to check for updates: {e}")
         finally:
