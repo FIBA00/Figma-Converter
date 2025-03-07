@@ -1,4 +1,4 @@
 customtkinter
 tk
-requests>=2.31.0
-semver>=3.0.0
+requests
+semver

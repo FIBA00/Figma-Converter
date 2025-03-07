@@ -122,7 +122,7 @@ def load_config():
             return json.load(f)
     return {}
 
-def save_config(token, url, auto_save='True', theme="light"):
+def save_config(token, url, auto_save="False", theme="light") -> None:
     config = {
         'token': token,
         'url': url,

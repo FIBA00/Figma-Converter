@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "figma-converter"
+version = "1.0.0"
+description = "A GUI application to convert Figma designs into Tkinter applications"
+authors = ["Fraol D <fraold@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+customtkinter = "*"
+requests = "*"
+semver = "*"
+pillow = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

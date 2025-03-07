@@ -2,20 +2,27 @@
 - Figma design to tkinter app converter version 1.0
 - The premium version will come in the next release.
 """
+
 import os
 import sys
-import platform
 import json
 import logging
 import subprocess
-import requests
-import semver
-import customtkinter as ctk
 from threading import Thread
 from pathlib import Path
-from datetime import datetime
-from urllib.parse import urljoin
-from typing import Dict, List
+from typing import Dict
+
+# Add application packages to Python path
+APP_LIB = Path("/opt/figma-converter/lib")
+if APP_LIB.exists():
+    sys.path.insert(0, str(APP_LIB))
+
+# Now import packages from virtual environment
+import requests
+import semver
+from PIL import Image
+import customtkinter as ctk
+from tkinter import PhotoImage
 
 from figma import (
     create_path,
@@ -26,6 +33,8 @@ from figma import (
     DATA_DIR,
     CONFIG_PATH,
 )
+
+
 def get_project_root() -> Path:
     """Get the absolute path to the project root directory."""
     if getattr(sys, "frozen", False):
@@ -34,6 +43,7 @@ def get_project_root() -> Path:
     else:
         # We are running in normal Python environment
         return Path(__file__).parent
+
 
 sys.path.append(str(get_project_root()))
 PATHS: Dict[str, Path] = {"logs": DATA_DIR / "logs" / "app.log"}
@@ -61,25 +71,58 @@ class FigmaConverterApp(ctk.CTk):
         self.root = get_project_root()
         self.default_dir = DATA_DIR
         self.default_dir.mkdir(parents=True, exist_ok=True)
-        self.title("MPS Figma to tkinter convertor")
-        self.wm_attributes("-type", "splash")
+        self.title("Figma to tkinter convertor")
+        # Add background image
+        try:
+            bg_path = self.root / "background.jpeg"
+            if bg_path.exists():
+                # Load and convert JPEG using PIL first
+                bg_img = Image.open(bg_path)
+                # Convert to a format Tkinter can handle
+                self.background_image = ctk.CTkImage(
+                    light_image=bg_img,
+                    size=bg_img.size
+                )
+                self.background_label = ctk.CTkLabel(
+                    self,
+                    image=self.background_image,
+                    text=""  # Empty text for image-only label
+                )
+                self.background_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+        except Exception as e:
+            logging.warning(f"Could not load background image: {e}")
 
-        # Check for updates on startup
+        # Set window icon (if available)
+        try:
+            icon_path = self.root / "figma-converter.ico"
+            if icon_path.exists():
+                # Create a temporary PNG file from the ICO
+                img = Image.open(icon_path)
+                png_path = self.root / "temp_icon.png"
+                img.save(png_path)
+
+                # Use the PNG file for the icon
+                self.iconphoto = PhotoImage(file=str(png_path))
+                self.wm_iconphoto(True, self.iconphoto)
+
+                # Clean up
+                png_path.unlink()
+        except Exception as e:
+            logging.warning(f"Could not set application icon: {e}")
+        # Initialize variables
+        self.original_token = ""
+        self.original_url = ""
+        self.original_auto_save = "true"
+        self.original_theme = "light"
+
+        # Create UI variables
         self.auto_save = ctk.BooleanVar(value=True)  # by default Save
+        self.theme_var = ctk.StringVar(value="light")
         self.active_tooltip = None  # Track current tooltip
         self.tooltip_after_id = None  # Track scheduled tooltipe_after_id
         self.sidebar_width = 250
         self.update_available = False
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        window_width = int(screen_width * 0.8)
-        window_height = int(screen_height * 0.8)
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-
-        # Set geometry
-        # self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        self.minsize(1000, 800)  # Minimum window size
+        self.minsize(800, 800)  # Minimum window size
         self.grid_columnconfigure(1, weight=1)  # Make column 1 expandable
         self.grid_rowconfigure(5, weight=1)  # Make the last row expandable for output
         self.top_bar = ctk.CTkFrame(self, height=40, fg_color=("transparent"))
@@ -127,18 +170,6 @@ class FigmaConverterApp(ctk.CTk):
         )
         self.help_button.grid(row=0, column=4, padx=5, pady=5)
 
-        # Minimize button
-        self.min_button = ctk.CTkButton(
-            self.top_bar,
-            text="─",
-            width=30,
-            height=30,
-            command=self.minimize_window,
-            fg_color=("red", "dark red"),
-            hover_color=("gray70", "gray30"),
-        )
-        self.min_button.grid(row=0, column=5, padx=2)
-
         # Maximize button
         self.max_button = ctk.CTkButton(
             self.top_bar,
@@ -150,19 +181,6 @@ class FigmaConverterApp(ctk.CTk):
             hover_color=("gray70", "gray30"),
         )
         self.max_button.grid(row=0, column=6, padx=2)
-
-        # Close button
-        self.close_button = ctk.CTkButton(
-            self.top_bar,
-            text="×",
-            width=30,
-            height=30,
-            command=self.quit,
-            fg_color=("red", "dark red"),
-            hover_color=("dark red", "red"),
-        )
-        self.close_button.grid(row=0, column=7, padx=2)
-        self.toggle_maximize()
 
         # Make window draggable from top bar
         self.top_bar.bind("<Button-1>", self.start_move)
@@ -269,7 +287,7 @@ class FigmaConverterApp(ctk.CTk):
         # manual load button
         self.load_button = ctk.CTkButton(
             self.settings_content,
-            text="Load settings",
+            text="Load Configs",
             command=self.load_settings,
             height=28,
         )
@@ -279,7 +297,7 @@ class FigmaConverterApp(ctk.CTk):
         # clear settings button
         self.clear_button = ctk.CTkButton(
             self.settings_content,
-            text="Clear settings",
+            text="Clear entry",
             command=self.clear_settings,
             height=28,
         )
@@ -326,7 +344,7 @@ class FigmaConverterApp(ctk.CTk):
         self.separator3 = ctk.CTkFrame(self.sidebar_content, height=2)
         self.separator3.grid(row=11, column=0, padx=20, pady=(10, 0), sticky="ew")
 
-        self.theme_var = ctk.StringVar(value="light")
+        # Theme switch
         self.theme_label = ctk.CTkLabel(
             self.sidebar_content,
             text="🎨 Appearance",
@@ -343,6 +361,15 @@ class FigmaConverterApp(ctk.CTk):
             offvalue="light",
         )
         self.theme_switch.grid(row=12, column=0, padx=20, pady=5)
+
+        # Load saved theme or use default
+        try:
+            config = load_config()
+            if config and "theme" in config:
+                self.theme_var.set(config["theme"])
+                ctk.set_appearance_mode(config["theme"])
+        except Exception as e:
+            self.out(f"Error loading theme: {str(e)}")
 
         # Main content frame
         self.main_frame = ctk.CTkFrame(self)
@@ -431,40 +458,6 @@ class FigmaConverterApp(ctk.CTk):
         x = self.winfo_x() + deltax
         y = self.winfo_y() + deltay
         self.geometry(f"+{x}+{y}")
-
-    def minimize_window(self):
-        """Custom minimize for overrideredirect window"""
-        self._last_geometry = self.geometry()
-        self.withdraw()  # Hide current window
-        self.minimized_window = ctk.CTkToplevel(self)
-        self.minimized_window.overrideredirect(True)
-        self.minimized_window.geometry("150x30")
-        self.minimized_window.attributes("-topmost", True)
-        # Restore button
-        restore_button = ctk.CTkButton(
-            self.minimized_window,
-            text="Restore",
-            command=self.restore_window,
-            height=30,
-            width=150,
-        )
-        restore_button.pack(fill="both", expand=True)
-
-        # Position minimized window at bottom of screen
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        x = screen_width - 200
-        y = screen_height - 50
-
-        self.minimized_window.geometry(f"+{x}+{y}")
-
-    def restore_window(self):
-        """Restore window from minimized state"""
-        if hasattr(self, "_last_geometry"):
-            self.geometry(self._last_geometry)
-        if hasattr(self, "minimized_window"):
-            self.minimized_window.destroy()
-        self.deiconify()
 
     def toggle_maximize(self):
         """Toggle between maximized and normal window"""
@@ -764,12 +757,15 @@ class FigmaConverterApp(ctk.CTk):
         self.out(f"Theme switched to {new_theme} mode")
 
         if save_settings and hasattr(self, "token_entry"):
-            save_config(
-                self.token_entry.get().strip(),
-                self.url_entry.get().strip(),
-                str(self.auto_save.get()),
-                new_theme,
-            )
+            try:
+                save_config(
+                    self.token_entry.get().strip(),
+                    self.url_entry.get().strip(),
+                    str(self.auto_save.get()),
+                    new_theme,
+                )
+            except Exception as e:
+                self.out(f"Error saving config: {str(e)}")
         self.out(f"Theme switched to {new_theme} mode")
 
     def show_progress(self):
@@ -790,23 +786,28 @@ class FigmaConverterApp(ctk.CTk):
         try:
             token: str = self.token_entry.get().strip()
             url: str = self.url_entry.get().strip()
-            auto_save: bool = self.auto_save.get()
+            auto_save: str = str(self.auto_save.get()).lower()
             theme: str = self.theme_var.get()
 
-            if (
-                not token and not url
-            ):  # Changed from checking widget to checking content
+            if not token and not url:
                 self.show_alert(
                     "Empty Fields", "Nothing to save - both fields are empty", "warning"
                 )
                 return
+
             save_config(token, url, auto_save, theme)
             self.out("SUCCESS: Configs saved!")
-            self.show_alert("Saved", "Token and url is saved")
+            self.show_alert("Saved", "Settings saved successfully")
+
+            # Update original values
+            self.original_token = token
+            self.original_url = url
+            self.original_auto_save = auto_save
+            self.original_theme = theme
         except Exception as e:
             self.out(f"Error while saving settings: {str(e)}")
             self.show_alert(
-                "Load Error", f"Error while saving configs{str(e)}", "warning"
+                "Save Error", f"Error while saving settings: {str(e)}", "warning"
             )
 
     def load_settings(self):
@@ -817,7 +818,7 @@ class FigmaConverterApp(ctk.CTk):
                 # Store original values
                 self.original_token = config.get("token", "")
                 self.original_url = config.get("url", "")
-                self.original_auto_save = str(config.get("auto_save", "True")).lower()
+                self.original_auto_save = str(config.get("auto_save", "False")).lower()
                 self.original_theme = config.get("theme", "light")
 
                 # Update UI elements
@@ -828,7 +829,7 @@ class FigmaConverterApp(ctk.CTk):
                 self.url_entry.insert(0, self.original_url)
 
                 # Update auto-save and theme
-                self.auto_save.set(self.original_auto_save == "true")
+                self.auto_save.set(self.original_auto_save.lower() == "true")
                 self.theme_var.set(self.original_theme)
                 self.toggle_theme(save_settings=False)  # Apply theme without saving
 
@@ -839,17 +840,44 @@ class FigmaConverterApp(ctk.CTk):
             self.out(f"ERROR: Error while loading settings: {str(e)}")
             self.show_alert("Load Error", f"{str(e)}", "warning")
 
+    def delete_config_file(self):
+        """Delete the configuration file from disk"""
+        try:
+            if CONFIG_PATH.exists():
+                CONFIG_PATH.unlink()
+                self.out("Configuration file deleted successfully")
+                self.show_alert("Success", "Configuration file deleted successfully")
+                return True
+            else:
+                self.out("No configuration file found")
+                return False
+        except Exception as e:
+            self.out(f"Error deleting configuration file: {str(e)}")
+            self.show_alert(
+                "Error", f"Failed to delete configuration file: {str(e)}", "error"
+            )
+            return False
+
     def clear_settings(self):
         """Clear the settings and revert to original values"""
         self.token_entry.delete(0, "end")
-        self.token_entry.insert(0, self.original_token)  # Reset to original token
         self.url_entry.delete(0, "end")
-        self.url_entry.insert(0, self.original_url)  # Reset to original URL
-        self.auto_save.set(self.original_auto_save)  # Reset auto_save
-        self.theme_var.set(self.original_theme)  # Reset theme
+        self.auto_save.set(False)  # Reset auto_save to False
 
-        save_config("", "")  # Save empty values if needed
-        self.out("Settings cleared")
+        # Keep the current theme
+        current_theme = self.theme_var.get()
+
+        # Reset original values
+        self.original_token = ""
+        self.original_url = ""
+        self.original_auto_save = "false"
+
+        try:
+            # Delete the config file instead of saving empty values
+            self.delete_config_file()
+            self.out("Settings cleared and config file deleted")
+        except Exception as e:
+            self.out(f"Error clearing settings: {str(e)}")
 
     def export_settings(self):
         """Export current settings to file"""
@@ -885,6 +913,15 @@ class FigmaConverterApp(ctk.CTk):
             self.out(f"Settings export failed: {str(e)}")
 
     # -------------------------------------CORE METHODS----------------------------------------
+    def select_output_directory(self):
+        """Allow user to select output directory"""
+        from tkinter import filedialog
+
+        directory = filedialog.askdirectory()
+        if directory:
+            return Path(directory)
+        return None
+
     def convert_design(self):
         """- Handle the design conversion process."""
         # Clear previous output
@@ -892,14 +929,19 @@ class FigmaConverterApp(ctk.CTk):
         self.update_status("Converting...", ("orange", "dark orange"))
         try:
             # Get input values
-            output_path = create_path()
-            self.out(f"SUCCESS: Created output directory: {output_path}")
             token = self.token_entry.get().strip()
             url = self.url_entry.get().strip()
             if not token or not url:
                 self.out("Error: Please enter both token and URL")
                 self.show_alert("Warning", "Please Enter the values", "error")
                 return
+
+            # Ask user for output directory
+            output_path = self.select_output_directory()
+            if output_path is None:
+                output_path = create_path()  # Use default if user cancels
+
+            self.out(f"SUCCESS: Using output directory: {output_path}")
 
             file_url = convert_url_to_file_format(url)
             self.out(f"Converted URL format: {file_url}")
@@ -920,14 +962,12 @@ class FigmaConverterApp(ctk.CTk):
             else:
                 self.out("Empty url, can't convert empty url")
                 self.out("Please check yor url!")
-                self.show_alert("Convert Error", f"Try to check your Figma url!")
-
                 self.hide_progress()
                 self.update_status("Stopped", ("red", "dark orange"))
 
         except Exception as e:
             self.out(f"Error while converting Error: {str(e)}")
-            self.out(f"Error while converting Error: {str(e)}")
+            self.show_alert("Convert Error", "Try to check your Figma url!")
 
     def run_conversion(self, token, file_url, output_path):
         """- Run conversion in a seprate thead"""
@@ -945,14 +985,13 @@ class FigmaConverterApp(ctk.CTk):
             self.after(0, self.hide_progress)
 
     def run_check_update(self) -> None:
-        """ Run the check for update system on separate thread to prevent blocking"""
+        """Run the check for update system on separate thread to prevent blocking"""
         try:
             update_thread = Thread(target=self.check_for_updates)
             update_thread.daemon = True
             update_thread.start()
         except Exception as e:
             self.out(f"There was error running the check update {str(e)}")
-        
 
     def check_for_updates(self):
         """Check for new releases on GitHub"""
@@ -960,7 +999,7 @@ class FigmaConverterApp(ctk.CTk):
             self.out("Checking for update... ")
             self.show_progress()
             repo_url = f"{self.GITHUB_API_URL}{self.GITHUB_REPO}"
-            repo_response: requests.Response   = requests.get(repo_url, timeout=5)
+            repo_response: requests.Response = requests.get(repo_url, timeout=5)
 
             if repo_response.status_code == 404:
                 self.out("Repository not found, skipping update check")
