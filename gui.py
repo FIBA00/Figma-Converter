@@ -72,25 +72,6 @@ class FigmaConverterApp(ctk.CTk):
         self.default_dir = DATA_DIR
         self.default_dir.mkdir(parents=True, exist_ok=True)
         self.title("Figma to tkinter convertor")
-        # Add background image
-        try:
-            bg_path = self.root / "background.jpeg"
-            if bg_path.exists():
-                # Load and convert JPEG using PIL first
-                bg_img = Image.open(bg_path)
-                # Convert to a format Tkinter can handle
-                self.background_image = ctk.CTkImage(
-                    light_image=bg_img,
-                    size=bg_img.size
-                )
-                self.background_label = ctk.CTkLabel(
-                    self,
-                    image=self.background_image,
-                    text=""  # Empty text for image-only label
-                )
-                self.background_label.place(relx=0, rely=0, relwidth=1, relheight=1)
-        except Exception as e:
-            logging.warning(f"Could not load background image: {e}")
 
         # Set window icon (if available)
         try:
@@ -1169,4 +1150,6 @@ if __name__ == "__main__":
         app.mainloop()
     except KeyboardInterrupt:
         print("/ Programm killed by user")
+        sys.exit(1)
+
         sys.exit(1)
