@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=Figma Converter
+Comment=Convert Figma designs to Tkinter GUI applications
+Exec=figma-converter
+Icon=figma-converter
+Terminal=false
+Type=Application
+Categories=Development;Graphics;
+Keywords=figma;tkinter;gui;converter;design;

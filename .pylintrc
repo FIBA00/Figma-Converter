@@ -1,0 +1,10 @@
+[MASTER]
+ignore=tests
+
+[MESSAGES CONTROL]
+disable=C0111,  # Missing docstring
+disable=W0611,  # Unused import
+disable=E1101,  # Instance of 'X' has no 'Y' member
+
+[FORMAT]
+max-line-length=300
