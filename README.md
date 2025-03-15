@@ -50,4 +50,3 @@ The application automatically saves your last used configuration in the `GUI_DIR
 
 ## License
 
-MIT License
